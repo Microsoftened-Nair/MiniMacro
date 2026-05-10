@@ -6,6 +6,7 @@ class MacroProcessor:
     def __init__(self):
         self.MNT = [] # List of dicts: {'name': name, 'mdt_index': index, 'num_params': num}
         self.MDT = [] # List of strings (lines)
+        self.ALA = [] # Argument List Array entries for formal and actual parameters
         self.intermediate_code = []
         self.expanded_code = []
         self.errors = []
@@ -17,6 +18,7 @@ class MacroProcessor:
     def pass_1(self, source_lines):
         self.MNT = []
         self.MDT = []
+        self.ALA = []
         self.intermediate_code = []
         self.errors = []
         
@@ -64,10 +66,19 @@ class MacroProcessor:
                 self.MNT.append({
                     'name': macro_name,
                     'mdt_index': len(self.MDT),
-                    'num_params': len(formal_params)
+                    'num_params': len(formal_params),
+                    'params': formal_params
                 })
                 
                 params_map = {param: f"#{idx+1}" for idx, param in enumerate(formal_params)}
+                for idx, param in enumerate(formal_params):
+                    self.ALA.append({
+                        'macro': macro_name,
+                        'line': i + 1,
+                        'position': f"#{idx+1}",
+                        'formal': param,
+                        'actual': '-'
+                    })
                 
             elif parts[0] == 'MEND':
                 if not in_macro:
@@ -118,6 +129,15 @@ class MacroProcessor:
                     self.errors.append(f"Line {original_line_num}: Error - Incorrect parameters for macro '{opcode}'. Expected {mnt_entry['num_params']}, got {len(actual_params)}.")
                     self.expanded_code.append(f"; ERROR: Macro '{opcode}' expansion failed (Argument mismatch)")
                     continue
+
+                for idx, act_param in enumerate(actual_params):
+                    self.ALA.append({
+                        'macro': opcode,
+                        'line': original_line_num,
+                        'position': f"#{idx+1}",
+                        'formal': mnt_entry['params'][idx],
+                        'actual': act_param
+                    })
                     
                 # Expand Macro
                 self.expanded_code.append(f"; -- Expanding Macro: {opcode} --")
@@ -146,6 +166,7 @@ class MacroProcessor:
         return {
             'mnt': self.MNT,
             'mdt': self.MDT,
+            'ala': self.ALA,
             'expanded': '\n'.join(self.expanded_code),
             'errors': self.errors
         }
@@ -182,7 +203,7 @@ class MiniMacroIDE:
         self.input_text = scrolledtext.ScrolledText(left_frame, width=45, height=30, font=('Consolas', 11))
         self.input_text.pack(fill=tk.BOTH, expand=True, pady=(5, 10))
         
-        run_btn = ttk.Button(left_frame, text="▶ Run Macro Processor", command=self.run_processor)
+        run_btn = ttk.Button(left_frame, text="Run Macro Processor", command=self.run_processor)
         run_btn.pack(fill=tk.X, pady=5)
         
         # --- Right Frame: Outputs ---
@@ -199,9 +220,9 @@ class MiniMacroIDE:
         self.expanded_text = scrolledtext.ScrolledText(self.tab_expanded, font=('Consolas', 11), bg='#F8F9FA')
         self.expanded_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Tab 2: Tables (MNT & MDT)
+        # Tab 2: Tables (MNT, ALA & MDT)
         self.tab_tables = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_tables, text="Internal Tables (MNT & MDT)")
+        self.notebook.add(self.tab_tables, text="Internal Tables (MNT, ALA & MDT)")
         
         # MNT Table
         ttk.Label(self.tab_tables, text="Macro Name Table (MNT):", font=('Segoe UI', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
@@ -215,10 +236,25 @@ class MiniMacroIDE:
         self.mnt_tree.column("MDT_Index", width=100, anchor=tk.CENTER)
         self.mnt_tree.column("Num_Params", width=100, anchor=tk.CENTER)
         self.mnt_tree.pack(fill=tk.X, padx=5)
+
+        # ALA Table
+        ttk.Label(self.tab_tables, text="Argument List Array (ALA):", font=('Segoe UI', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
+        self.ala_tree = ttk.Treeview(self.tab_tables, columns=("Macro", "Line", "Position", "Formal", "Actual"), show="headings", height=6)
+        self.ala_tree.heading("Macro", text="Macro")
+        self.ala_tree.heading("Line", text="Line")
+        self.ala_tree.heading("Position", text="Position")
+        self.ala_tree.heading("Formal", text="Formal Argument")
+        self.ala_tree.heading("Actual", text="Actual Argument")
+        self.ala_tree.column("Macro", width=120, anchor=tk.CENTER)
+        self.ala_tree.column("Line", width=60, anchor=tk.CENTER)
+        self.ala_tree.column("Position", width=80, anchor=tk.CENTER)
+        self.ala_tree.column("Formal", width=140, anchor=tk.CENTER)
+        self.ala_tree.column("Actual", width=140, anchor=tk.CENTER)
+        self.ala_tree.pack(fill=tk.X, padx=5)
         
         # MDT Table
         ttk.Label(self.tab_tables, text="Macro Definition Table (MDT):", font=('Segoe UI', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
-        self.mdt_tree = ttk.Treeview(self.tab_tables, columns=("Index", "Instruction"), show="headings")
+        self.mdt_tree = ttk.Treeview(self.tab_tables, columns=("Index", "Instruction"), show="headings", height=8)
         self.mdt_tree.heading("Index", text="Index")
         self.mdt_tree.heading("Instruction", text="Instruction Body")
         self.mdt_tree.column("Index", width=50, anchor=tk.CENTER)
@@ -281,6 +317,18 @@ END
             self.mnt_tree.delete(item)
         for i, entry in enumerate(result['mnt']):
             self.mnt_tree.insert("", "end", values=(i, entry['name'], entry['mdt_index'], entry['num_params']))
+
+        # Display ALA
+        for item in self.ala_tree.get_children():
+            self.ala_tree.delete(item)
+        for entry in result['ala']:
+            self.ala_tree.insert("", "end", values=(
+                entry['macro'],
+                entry['line'],
+                entry['position'],
+                entry['formal'],
+                entry['actual']
+            ))
             
         # Display MDT
         for item in self.mdt_tree.get_children():
@@ -291,10 +339,11 @@ END
         # Display Errors
         self.error_text.delete("1.0", tk.END)
         if result['errors']:
-            self.error_text.insert(tk.END, "\\n".join(result['errors']))
+            self.error_text.configure(foreground="#D32F2F")
+            self.error_text.insert(tk.END, "\n".join(result['errors']))
         else:
             self.error_text.configure(foreground="green")
-            self.error_text.insert(tk.END, "✓ Compilation finished successfully with 0 errors.")
+            self.error_text.insert(tk.END, "Compilation finished successfully with 0 errors.")
 
 if __name__ == "__main__":
     root = tk.Tk()
