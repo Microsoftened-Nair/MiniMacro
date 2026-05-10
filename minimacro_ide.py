@@ -1,7 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 import re
-
+# Language Keywords: [0]MACRO, [1]MEND, [2]START, [3]END, [4]PRINT
+keywords = ['MACRO', 'MEND', 'START', 'END', 'PRINT']
 class MacroProcessor:
     def __init__(self):
         self.MNT = [] # List of dicts: {'name': name, 'mdt_index': index, 'num_params': num}
@@ -10,8 +11,7 @@ class MacroProcessor:
         self.intermediate_code = []
         self.expanded_code = []
         self.errors = []
-        # Language Keywords (5 as per requirement)
-        self.keywords = {'MACRO', 'MEND', 'START', 'END', 'PRINT'}
+        self.keywords = keywords
         # Additional standard instructions to avoid false "undefined macro" errors
         self.valid_instructions = {'LOAD', 'STORE', 'ADD', 'SUB', 'MOV'}
 
@@ -41,9 +41,9 @@ class MacroProcessor:
                 i += 1
                 continue
                 
-            if parts[0] == 'MACRO':
+            if parts[0] == self.keywords[0]:
                 if in_macro:
-                    self.errors.append(f"Line {i+1}: Error - Nested MACRO definition not allowed.")
+                    self.errors.append(f"Line {i+1}: Error - Nested {self.keywords[0]} definition not allowed.")
                 in_macro = True
                 # Next line must be the macro header
                 i += 1
@@ -80,11 +80,11 @@ class MacroProcessor:
                         'actual': '-'
                     })
                 
-            elif parts[0] == 'MEND':
+            elif parts[0] == self.keywords[1]:
                 if not in_macro:
-                    self.errors.append(f"Line {i+1}: Error - MEND without starting MACRO.")
+                    self.errors.append(f"Line {i+1}: Error - {self.keywords[1]} without starting {self.keywords[0]}.")
                 else:
-                    self.MDT.append('MEND')
+                    self.MDT.append(self.keywords[1])
                     in_macro = False
                     params_map = {}
             else:
@@ -101,7 +101,7 @@ class MacroProcessor:
             i += 1
             
         if in_macro:
-            self.errors.append("Error - Missing MEND for a MACRO definition.")
+            self.errors.append(f"Error - Missing {self.keywords[1]} for a {self.keywords[0]} definition.")
 
     def pass_2(self):
         self.expanded_code = []
@@ -142,7 +142,7 @@ class MacroProcessor:
                 # Expand Macro
                 self.expanded_code.append(f"; -- Expanding Macro: {opcode} --")
                 mdt_idx = mnt_entry['mdt_index']
-                while mdt_idx < len(self.MDT) and self.MDT[mdt_idx] != 'MEND':
+                while mdt_idx < len(self.MDT) and self.MDT[mdt_idx] != self.keywords[1]:
                     mdt_line = self.MDT[mdt_idx]
                     expanded_line = mdt_line
                     # Substitute #n with actual parameters
@@ -266,25 +266,25 @@ class MiniMacroIDE:
         self.error_text.pack(fill=tk.X, pady=5)
 
     def load_sample_code(self):
-        sample = """; MiniMacro Sample Program
-; Language Keywords: MACRO, MEND, START, END, PRINT
+        sample = f"""; MiniMacro Sample Program
+; Language Keywords: {keywords}
 ; -----------------------------------
 
 ; Definition 1: Two parameters
-MACRO
+{keywords[0]}
 ADD_VARS X, Y
 LOAD X
 ADD Y
 STORE X
-MEND
+{keywords[1]}
 
 ; Definition 2: One parameter
-MACRO
+{keywords[0]}
 DISPLAY VAL
-PRINT VAL
-MEND
+{keywords[4]} VAL
+{keywords[1]}
 
-START
+{keywords[2]}
 
 ; 1. Valid Macro Calls
 ADD_VARS NUM1, NUM2
@@ -297,7 +297,7 @@ ADD_VARS A, B, C
 ; 3. Error Demonstration: Undefined macro
 UNKNOWN_CMD DATA
 
-END
+{keywords[3]}
 """
         self.input_text.insert(tk.END, sample)
         
